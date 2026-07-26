@@ -89,8 +89,301 @@ function Start({routines,onBack,onRoutine,onPart}){return <section><Back onClick
 function Picker({part,names,defaults,hiddenDefaults,doneNames,onBack,onAdd,onDelete,onHide,onRestore,onPick}){const [name,setName]=useState(''),[showHidden,setShowHidden]=useState(false);return <section><Back onClick={onBack}/><Head eyebrow="QUICK INPUT" title={part}/><div className="row list-title"><h2>種目一覧</h2><small>{doneNames.length}種目記録済み</small></div><div className="stack">{names.map(n=>{const isDefault=defaults.includes(n),done=doneNames.includes(n);return <div className="custom-row" key={n}><button className={done?'done-exercise':''} onClick={()=>onPick(n)}>{done?'✓ ':''}{n}</button><button className="danger" onClick={()=>confirm(`「${n}」を削除しますか？
 過去の記録は残ります。`)&&(isDefault?onHide(n):onDelete(n))}>×</button></div>})}</div><form className="card form" onSubmit={async e=>{e.preventDefault();const v=name.trim();if(!v)return;if(await onAdd(v))setName('')}}><h2>＋ 種目を追加</h2><input value={name} onChange={e=>setName(e.target.value)} placeholder="例：スミスマシンベンチ"/><button className="primary">追加</button></form>{hiddenDefaults.length>0&&<article className="card"><button className="hidden-toggle" onClick={()=>setShowHidden(x=>!x)}>{showHidden?'閉じる':'非表示にした種目を管理'}</button>{showHidden&&<div className="stack hidden-list">{hiddenDefaults.map(n=><button key={n} onClick={()=>onRestore(n)}>{n}を復元</button>)}</div>}</article>}</section>}
 function Routines({routines,onBack,onSave,onDelete}){const [title,setTitle]=useState(''),[items,setItems]=useState('');return <section><Back onClick={onBack}/><Head eyebrow="MY ROUTINES" title="ルーティン管理"/><form className="card form" onSubmit={async e=>{e.preventDefault();const ex=items.split('\n').map(x=>x.trim()).filter(Boolean);if(!title.trim()||!ex.length)return alert('タイトルと種目を入力');await onSave(title.trim(),ex);setTitle('');setItems('')}}><label>自由タイトル<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="胸ルーティン"/></label><label>種目（1行に1種目）<textarea value={items} onChange={e=>setItems(e.target.value)} placeholder={'ベンチプレス\nサイドレイズ'}/></label><button className="primary">保存</button></form><div className="list">{routines.map(r=><article className="card" key={r.id}><div className="row"><div><h2>{r.title}</h2><small>{r.exercises.length}種目</small></div><button className="danger" onClick={()=>onDelete(r.id)}>×</button></div><ol>{r.exercises.map(x=><li key={x}>{x}</li>)}</ol></article>)}</div></section>}
-function Workout({title,names,history,onBack,onSave}){const saved=(()=>{try{return JSON.parse(localStorage.getItem('bulkbro-active-workout')||'null')}catch{return null}})();const [startedAt]=useState(saved?.title===title?saved.startedAt:new Date().toISOString()),[memo,setMemo]=useState(saved?.title===title?saved.memo:''),[exercises,setExercises]=useState(saved?.title===title?saved.exercises:names.map(name=>({name,sets:[blankSet()]})));const timerKey=`bulkbro-rest-${title}-${names[0]}`;const [restSeconds,setRestSeconds]=useState(()=>Number(localStorage.getItem(timerKey)||60));useEffect(()=>{localStorage.setItem('bulkbro-active-workout',JSON.stringify({title,startedAt,memo,exercises}))},[title,startedAt,memo,exercises]);useEffect(()=>{localStorage.setItem(timerKey,String(restSeconds))},[timerKey,restSeconds]);const volume=useMemo(()=>volumeOf(exercises),[exercises]);const previous=name=>{for(const w of history){const e=w.exercises?.find(x=>x.name===name);if(e)return e}return null};const monthAgo=name=>{const target=Date.now()-30*86400000;return history.map(w=>({e:w.exercises?.find(x=>x.name===name),d:Math.abs(new Date(w.startedAt)-target)})).filter(x=>x.e).sort((a,b)=>a.d-b.d)[0]?.e};const best=name=>Math.max(0,...history.flatMap(w=>w.exercises?.filter(e=>e.name===name).flatMap(e=>e.sets.map(s=>Number(s.weight||0)))||[]));const update=(ei,si,k,v)=>setExercises(cur=>cur.map((e,i)=>i!==ei?e:{...e,sets:e.sets.map((s,j)=>j===si?{...s,[k]:v}:s)}));const addSet=(ei,source)=>setExercises(cur=>cur.map((e,i)=>i!==ei?e:{...e,sets:[...e.sets,source?{...source,weight:String(source.weight),reps:String(source.reps)}:{...(e.sets.at(-1)||blankSet())}]}));return <section><Back onClick={onBack}/><Head eyebrow="GYM MODE" title={title}/><div className="list">{exercises.map((e,ei)=>{const prev=previous(e.name),old=monthAgo(e.name),pr=best(e.name);return <article className="exercise" key={e.name}><div className="row"><h2>{e.name}</h2>{pr>0&&<span className="pr">👑 {pr}kg</span>}</div>{prev&&<div className="previous"><small>前回（押すとセット追加）</small><div className="chips">{prev.sets.map((s,i)=><button key={i} onClick={()=>addSet(ei,s)}>{s.weight}kg×{s.reps}</button>)}</div></div>}{old&&<div className="monthago">約1か月前：{old.sets.map(s=>`${s.weight}kg×${s.reps}`).join(' / ')}</div>}<div className="sets">{e.sets.map((s,si)=><div className="set" key={si}><small>SET {si+1}</small><input type="number" step="0.5" value={s.weight} onChange={x=>update(ei,si,'weight',x.target.value)} placeholder="kg"/><input type="number" value={s.reps} onChange={x=>update(ei,si,'reps',x.target.value)} placeholder="回"/><select value={s.effort} onChange={x=>update(ei,si,'effort',x.target.value)}><option>余裕</option><option>普通</option><option>限界</option></select></div>)}</div><button className="small" onClick={()=>addSet(ei)}>＋ 前セットをコピー</button></article>})}</div><div className="timer-setting"><label>⏱ 保存後の休憩タイマー<select value={restSeconds} onChange={e=>setRestSeconds(Number(e.target.value))}><option value={0}>OFF</option><option value={30}>30秒</option><option value={60}>1分</option><option value={90}>1分30秒</option><option value={120}>2分</option><option value={180}>3分</option><option value={300}>5分</option></select></label><small>保存すると自動開始。終了時に約1秒バイブして自動終了します。</small></div><label className="memo">今日のメモ<textarea value={memo} onChange={e=>setMemo(e.target.value)}/></label><div className="summary"><span>参考ボリューム</span><strong>{volume.toLocaleString()}kg</strong></div><button className="primary" onClick={async()=>{const cleaned=exercises.map(e=>({...e,sets:e.sets.filter(s=>s.weight!==''&&s.reps!=='').map(s=>({...s,weight:Number(s.weight),reps:Number(s.reps)}))})).filter(e=>e.sets.length);if(!cleaned.length)return alert('1種目以上入力');await onSave({title,startedAt,endedAt:new Date().toISOString(),memo,volume:volumeOf(cleaned),exercises:cleaned},restSeconds)}}>今日のトレーニングに保存</button></section>}
+function Workout({title,names,history,onBack,onSave}){const saved=(()=>{try{return JSON.parse(localStorage.getItem('bulkbro-active-workout')||'null')}catch{return null}})();const [startedAt]=useState(saved?.title===title?saved.startedAt:new Date().toISOString()),[memo,setMemo]=useState(saved?.title===title?saved.memo:''),[exercises,setExercises]=useState(saved?.title===title?saved.exercises:names.map(name=>({name,sets:[blankSet()]})));const timerKey=`bulkbro-rest-${title}-${names[0]}`;const [restSeconds,setRestSeconds]=useState(()=>Number(localStorage.getItem(timerKey)||60));useEffect(()=>{localStorage.setItem('bulkbro-active-workout',JSON.stringify({title,startedAt,memo,exercises}))},[title,startedAt,memo,exercises]);useEffect(()=>{localStorage.setItem(timerKey,String(restSeconds))},[timerKey,restSeconds]);const volume=useMemo(()=>volumeOf(exercises),[exercises]);const previous=name=>{for(const w of history){const e=w.exercises?.find(x=>x.name===name);if(e)return e}return null};const monthAgo=name=>{const target=Date.now()-30*86400000;return history.map(w=>({e:w.exercises?.find(x=>x.name===name),d:Math.abs(new Date(w.startedAt)-target)})).filter(x=>x.e).sort((a,b)=>a.d-b.d)[0]?.e};const best=name=>Math.max(0,...history.flatMap(w=>w.exercises?.filter(e=>e.name===name).flatMap(e=>e.sets.map(s=>Number(s.weight||0)))||[]));const update=(ei,si,k,v)=>setExercises(cur=>cur.map((e,i)=>i!==ei?e:{...e,sets:e.sets.map((s,j)=>j===si?{...s,[k]:v}:s)}));const addSet=(ei,source)=>setExercises(cur=>cur.map((e,i)=>{
+  if(i!==ei)return e
+
+  const nextSet=source
+    ? {
+        ...source,
+        weight:String(source.weight??''),
+        reps:String(source.reps??''),
+        effort:source.effort||'普通'
+      }
+    : {
+        ...(e.sets.at(-1)||blankSet())
+      }
+
+  const firstSet=e.sets[0]
+  const firstSetIsEmpty=
+    e.sets.length===1 &&
+    firstSet.weight==='' &&
+    firstSet.reps===''
+
+  if(source&&firstSetIsEmpty){
+    return {
+      ...e,
+      sets:[nextSet]
+    }
+  }
+
+  return {
+    ...e,
+    sets:[...e.sets,nextSet]
+  }
+}));
+
+const removeSet=(ei,si)=>setExercises(cur=>cur.map((e,i)=>{
+  if(i!==ei)return e
+
+  if(e.sets.length===1){
+    return {
+      ...e,
+      sets:[blankSet()]
+    }
+  }
+
+  return {
+    ...e,
+    sets:e.sets.filter((_,j)=>j!==si)
+  }
+}));return <section><Back onClick={onBack}/><Head eyebrow="GYM MODE" title={title}/><div className="list">{exercises.map((e,ei)=>{const prev=previous(e.name),old=monthAgo(e.name),pr=best(e.name);return <article className="exercise" key={e.name}><div className="row"><h2>{e.name}</h2>{pr>0&&<span className="pr">👑 {pr}kg</span>}</div>{prev&&<div className="previous"><small>前回（押すとセット追加）</small><div className="chips">{prev.sets.map((s,i)=><button key={i} onClick={()=>addSet(ei,s)}>{s.weight}kg×{s.reps}</button>)}</div></div>}{old&&<div className="monthago">約1か月前：{old.sets.map(s=>`${s.weight}kg×${s.reps}`).join(' / ')}</div>}<div className="sets">{e.sets.map((s,si)=><div className="set" key={si}><small>SET {si+1}</small><input type="number" step="0.5" value={s.weight} onChange={x=>update(ei,si,'weight',x.target.value)} placeholder="kg"/><input type="number" value={s.reps} onChange={x=>update(ei,si,'reps',x.target.value)} placeholder="回"/><select value={s.effort} onChange={x=>update(ei,si,'effort',x.target.value)}><option>余裕</option><option>普通</option><option>限界</option></select><button type="button" className="danger" onClick={()=>removeSet(ei,si)}>×</button></div>)}</div><button className="small" onClick={()=>addSet(ei)}>＋ 前セットをコピー</button></article>})}</div><div className="timer-setting"><label>⏱ 保存後の休憩タイマー<select value={restSeconds} onChange={e=>setRestSeconds(Number(e.target.value))}><option value={0}>OFF</option><option value={30}>30秒</option><option value={60}>1分</option><option value={90}>1分30秒</option><option value={120}>2分</option><option value={180}>3分</option><option value={300}>5分</option></select></label><small>保存すると自動開始。終了時に約1秒バイブして自動終了します。</small></div><label className="memo">今日のメモ<textarea value={memo} onChange={e=>setMemo(e.target.value)}/></label><div className="summary"><span>参考ボリューム</span><strong>{volume.toLocaleString()}kg</strong></div><button className="primary" onClick={async()=>{const cleaned=exercises.map(e=>({...e,sets:e.sets.filter(s=>s.weight!==''&&s.reps!=='').map(s=>({...s,weight:Number(s.weight),reps:Number(s.reps)}))})).filter(e=>e.sets.length);if(!cleaned.length)return alert('1種目以上入力');await onSave({title,startedAt,endedAt:new Date().toISOString(),memo,volume:volumeOf(cleaned),exercises:cleaned},restSeconds)}}>今日のトレーニングに保存</button></section>}
 function History({workouts,onBack,onDelete,onEdit}){const [month,setMonth]=useState(()=>new Date()),[selected,setSelected]=useState('');const first=new Date(month.getFullYear(),month.getMonth(),1),last=new Date(month.getFullYear(),month.getMonth()+1,0),cells=[...Array(first.getDay()).fill(null),...Array.from({length:last.getDate()},(_,i)=>i+1)];const has=new Set(workouts.map(w=>w.dateKey));const shown=selected?workouts.filter(w=>w.dateKey===selected):workouts;const allBest=(part,name)=>Math.max(0,...workouts.flatMap(w=>w.exercises.filter(e=>e.part===part&&e.name===name).flatMap(e=>e.sets.map(s=>Number(s.weight||0)))));return <section><Back onClick={onBack}/><Head eyebrow="WORKOUT HISTORY" title="履歴"/><div className="calendar"><div className="calhead"><button onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}>〈</button><strong>{month.getFullYear()}年{month.getMonth()+1}月</strong><button onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}>〉</button></div><div className="week">{['日','月','火','水','木','金','土'].map(x=><span key={x}>{x}</span>)}</div><div className="calgrid">{cells.map((d,i)=>d?(()=>{const k=dateKey(new Date(month.getFullYear(),month.getMonth(),d));return <button className={has.has(k)?'trained':''} key={k} onClick={()=>setSelected(selected===k?'':k)}>{d}</button>})():<div key={i}/>)}</div></div>{selected&&<button onClick={()=>setSelected('')}>全履歴に戻す</button>}{!shown.length?<div className="empty">記録がありません。</div>:<div className="list">{shown.map(w=>{const parts=PARTS.filter(p=>w.exercises.some(e=>e.part===p));return <article className="card" key={w.dateKey}><div className="row"><div><h2>🏋️ {w.dateKey.replaceAll('-','/')} トレーニング記録{parts.length?`（${parts.join('・')}）`:''}</h2>{w.sourceIds?.length>1&&<small>同日の記録をまとめて表示中</small>}</div><div><button onClick={()=>onEdit(w)}>編集</button><button className="danger" onClick={()=>onDelete(w)}>×</button></div></div>{parts.map(p=><section className="hist" key={p}><h3>{p}</h3>{w.exercises.filter(e=>e.part===p).map(e=>{const own=Math.max(0,...e.sets.map(s=>Number(s.weight||0)));return <div className="history-exercise" key={e.name}><h4>{own>0&&own===allBest(p,e.name)?'👑 ':''}{e.name}</h4><ul>{compressSets(e.sets).map((s,i)=><li key={i}>{s.weight!==''&&s.weight!=null?`${s.weight}kg × `:''}{s.reps}回{s.count>1?` × ${s.count}セット`:''}{s.note?`（${s.note}）`:''}</li>)}</ul></div>})}</section>)}<strong className="total">参考ボリューム {Number(w.volume||0).toLocaleString()}kg</strong></article>})}</div>}</section>}
-function EditWorkout({workout,onBack,onSave}){const [title,setTitle]=useState(workout.title),[exercises,setExercises]=useState(workout.exercises),[memo,setMemo]=useState(workout.memo||'');const update=(ei,si,k,v)=>setExercises(cur=>cur.map((e,i)=>i!==ei?e:{...e,sets:e.sets.map((s,j)=>j===si?{...s,[k]:v}:s)}));return <section><Back onClick={onBack}/><Head eyebrow="EDIT HISTORY" title="履歴編集"/><input value={title} onChange={e=>setTitle(e.target.value)}/><div className="list">{exercises.map((e,ei)=><article className="exercise" key={e.name}><div className="row"><h2>{e.name}</h2><button className="danger" onClick={()=>setExercises(x=>x.filter((_,i)=>i!==ei))}>×</button></div>{e.sets.map((s,si)=><div className="set" key={si}><small>SET {si+1}</small><input type="number" step="0.5" value={s.weight} onChange={x=>update(ei,si,'weight',x.target.value)}/><input type="number" value={s.reps} onChange={x=>update(ei,si,'reps',x.target.value)}/><select value={s.effort} onChange={x=>update(ei,si,'effort',x.target.value)}><option>余裕</option><option>普通</option><option>限界</option></select></div>)}</article>)}</div><label className="memo">メモ<textarea value={memo} onChange={e=>setMemo(e.target.value)}/></label><button className="primary" onClick={()=>onSave({...workout,title,memo,exercises:exercises.map(e=>({...e,sets:e.sets.map(s=>({...s,weight:Number(s.weight),reps:Number(s.reps)}))}))})}>編集を保存</button></section>}
+function EditWorkout({workout,onBack,onSave}){
+  const [title,setTitle]=useState(workout.title||'')
+  const [exercises,setExercises]=useState(
+    (workout.exercises||[]).map(exercise=>({
+      ...exercise,
+      sets:(exercise.sets||[]).map(set=>({
+        ...set,
+        weight:String(set.weight??''),
+        reps:String(set.reps??''),
+        effort:set.effort||'普通'
+      }))
+    }))
+  )
+  const [memo,setMemo]=useState(workout.memo||'')
+
+  const update=(exerciseIndex,setIndex,key,value)=>{
+    setExercises(current=>
+      current.map((exercise,index)=>
+        index!==exerciseIndex
+          ? exercise
+          : {
+              ...exercise,
+              sets:exercise.sets.map((set,index2)=>
+                index2===setIndex
+                  ? {...set,[key]:value}
+                  : set
+              )
+            }
+      )
+    )
+  }
+
+  const addSet=(exerciseIndex)=>{
+    setExercises(current=>
+      current.map((exercise,index)=>{
+        if(index!==exerciseIndex)return exercise
+
+        return {
+          ...exercise,
+          sets:[
+            ...exercise.sets,
+            {...(exercise.sets.at(-1)||blankSet())}
+          ]
+        }
+      })
+    )
+  }
+
+  const removeSet=(exerciseIndex,setIndex)=>{
+    setExercises(current=>
+      current.map((exercise,index)=>{
+        if(index!==exerciseIndex)return exercise
+
+        if(exercise.sets.length===1){
+          return {
+            ...exercise,
+            sets:[blankSet()]
+          }
+        }
+
+        return {
+          ...exercise,
+          sets:exercise.sets.filter(
+            (_,index2)=>index2!==setIndex
+          )
+        }
+      })
+    )
+  }
+
+  const removeExercise=(exerciseIndex)=>{
+    setExercises(current=>
+      current.filter((_,index)=>index!==exerciseIndex)
+    )
+  }
+
+  const save=async()=>{
+    const cleaned=exercises
+      .map(exercise=>({
+        ...exercise,
+        sets:exercise.sets
+          .filter(set=>set.weight!==''&&set.reps!=='')
+          .map(set=>({
+            ...set,
+            weight:Number(set.weight),
+            reps:Number(set.reps)
+          }))
+      }))
+      .filter(exercise=>exercise.sets.length)
+
+    if(!cleaned.length){
+      return alert('1種目以上の記録を残してください')
+    }
+
+    await onSave({
+      ...workout,
+      title,
+      memo,
+      exercises:cleaned
+    })
+  }
+
+  return (
+    <section>
+      <Back onClick={onBack}/>
+
+      <Head
+        eyebrow="EDIT HISTORY"
+        title="履歴編集"
+      />
+
+      <label className="memo">
+        トレーニング名
+        <input
+          value={title}
+          onChange={event=>setTitle(event.target.value)}
+          placeholder="例：胸"
+        />
+      </label>
+
+      <div className="list">
+        {exercises.map((exercise,exerciseIndex)=>(
+          <article
+            className="exercise"
+            key={`${exercise.name}-${exerciseIndex}`}
+          >
+            <div className="row">
+              <div>
+                <small>{exercise.part||''}</small>
+                <h2>{exercise.name}</h2>
+              </div>
+
+              <button
+                type="button"
+                className="danger"
+                onClick={()=>{
+                  if(confirm(`「${exercise.name}」を履歴から削除しますか？`)){
+                    removeExercise(exerciseIndex)
+                  }
+                }}
+              >
+                種目削除
+              </button>
+            </div>
+
+            <div className="sets">
+              {exercise.sets.map((set,setIndex)=>(
+                <div
+                  className="set"
+                  key={setIndex}
+                >
+                  <small>SET {setIndex+1}</small>
+
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={set.weight}
+                    onChange={event=>
+                      update(
+                        exerciseIndex,
+                        setIndex,
+                        'weight',
+                        event.target.value
+                      )
+                    }
+                    placeholder="kg"
+                  />
+
+                  <input
+                    type="number"
+                    value={set.reps}
+                    onChange={event=>
+                      update(
+                        exerciseIndex,
+                        setIndex,
+                        'reps',
+                        event.target.value
+                      )
+                    }
+                    placeholder="回"
+                  />
+
+                  <select
+                    value={set.effort}
+                    onChange={event=>
+                      update(
+                        exerciseIndex,
+                        setIndex,
+                        'effort',
+                        event.target.value
+                      )
+                    }
+                  >
+                    <option>余裕</option>
+                    <option>普通</option>
+                    <option>限界</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    className="danger set-delete"
+                    onClick={()=>
+                      removeSet(
+                        exerciseIndex,
+                        setIndex
+                      )
+                    }
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              className="small"
+              onClick={()=>addSet(exerciseIndex)}
+            >
+              ＋ 前セットをコピー
+            </button>
+          </article>
+        ))}
+      </div>
+
+      <label className="memo">
+        メモ
+        <textarea
+          value={memo}
+          onChange={event=>setMemo(event.target.value)}
+        />
+      </label>
+
+      <div className="summary">
+        <span>参考ボリューム</span>
+        <strong>{volumeOf(exercises).toLocaleString()}kg</strong>
+      </div>
+
+      <button
+        className="primary"
+        onClick={save}
+      >
+        編集を保存
+      </button>
+    </section>
+  )
+}
 function Back({onClick}){return <button className="back" onClick={onClick}>← 戻る</button>}
 function Head({eyebrow,title}){return <header className="heading"><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></header>}
